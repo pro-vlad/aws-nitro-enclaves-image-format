@@ -17,7 +17,6 @@ use serde_cbor::to_vec;
 
 use crate::defs::{EifHeader, EifSectionHeader, EifSectionType, PcrInfo, PcrSignature};
 
-#[derive(Clone, Debug)]
 pub enum SigningMethod {
     PrivateKey(Vec<u8>),
     Kms(KmsKey),
@@ -207,33 +206,32 @@ impl EifSigner {
     }
 
     /// Generates the signature based on the selected method and writes it to the EIF
-    pub fn sign_image(&mut self) -> Result<(), String> {
-        let signature;
+    pub async fn sign_image(&mut self) -> Result<(), String> {
         let payload = self
             .get_payload()
             .expect("Failed to get payload for image signing.");
-
-        match &self.signing_key {
+        let signing_certificate = self.signing_certificate.clone();
+        let signature = match &self.signing_key {
             SigningMethod::PrivateKey(signing_key) => {
                 let private_key = PKey::private_key_from_pem(&mut signing_key.as_ref())
                     .expect("Could not deserialize the PEM-formatted private key");
-
-                signature =
-                    CoseSign1::new::<Openssl>(&payload, &HeaderMap::new(), private_key.as_ref())
+                CoseSign1::new::<Openssl>(&payload, &HeaderMap::new(), private_key.as_ref())
                         .unwrap()
                         .as_bytes(false)
-                        .unwrap();
+                        .unwrap()
             }
             SigningMethod::Kms(signing_key) => {
-                signature = CoseSign1::new::<Openssl>(&payload, &HeaderMap::new(), signing_key)
-                    .unwrap()
-                    .as_bytes(false)
-                    .unwrap();
+                tokio::spawn(async {
+                    CoseSign1::new::<Openssl>(&payload, &HeaderMap::new(), signing_key)
+                        .unwrap()
+                        .as_bytes(false)
+                        .unwrap()
+                }).await.unwrap()
             }
-        }
+        };
 
         let pcr_signature = PcrSignature {
-            signing_certificate: self.signing_certificate.clone(),
+            signing_certificate,
             signature,
         };
 

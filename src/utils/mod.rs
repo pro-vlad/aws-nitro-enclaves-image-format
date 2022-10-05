@@ -45,7 +45,6 @@ use tokio::runtime::Runtime;
 
 const DEFAULT_SECTIONS_COUNT: u16 = 3;
 
-#[derive(Clone, Debug)]
 pub struct SignEnclaveInfo {
     pub signing_certificate: Vec<u8>,
     pub signing_key: SigningMethod,
